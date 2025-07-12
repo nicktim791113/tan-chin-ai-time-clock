@@ -1,0 +1,44 @@
+{
+  "name": "tan-chin-ai-time-clock",
+  "version": "1.0.1",
+  "description": "震欣AI作息系統桌面版",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.8"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "productName": "TanChin AI Time Clock",
+    "appId": "com.yourcompany.tanchin.timeclock",
+    "copyright": "Copyright © 2025 黃啓惟",
+    "directories": {
+      "output": "dist"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "nicktim791113",
+        "repo": "@nicktim791113's untitled project"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico"
+    }
+  }
+}

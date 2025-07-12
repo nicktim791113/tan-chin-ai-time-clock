@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>震欣科技AI作息系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f0f4f8; }
+        .magic-container { background: linear-gradient(145deg, #ffffff, #e6e9ee); box-shadow: 10px 10px 20px #c8cacc, -10px -10px 20px #ffffff; }
+        .btn-magic { transition: all 0.3s ease; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .btn-magic:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15); }
+        .btn-magic:active { transform: translateY(1px); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+        .input-magic:focus { border-color: #4a90e2; box-shadow: 0 0 10px rgba(74, 144, 226, 0.3); }
+        .message-box { transition: all 0.5s ease-in-out; opacity: 0; transform: translateY(-20px); }
+        .message-box.show { opacity: 1; transform: translateY(0); }
+        .collapsible-panel { max-height: 0; overflow: hidden; transition: max-height 0.7s ease-in-out; }
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center;
+            align-items: center; z-index: 1000; opacity: 0; visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-overlay.show { opacity: 1; visibility: visible; }
+        .modal-content {
+            background: white; padding: 2rem; border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        .modal-overlay.show .modal-content { transform: scale(1); }
+        #sound-manager-modal { z-index: 1050; }
+        #change-password-modal { z-index: 1060; }
+        #confirm-generic-modal { z-index: 1100; }
+        
+        @keyframes shake-error {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+          20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .shake-error { animation: shake-error 0.5s ease-in-out; border-color: #f56565 !important; }
+        @keyframes flash-success { 50% { border-color: #48bb78; box-shadow: 0 0 10px rgba(72, 187, 120, 0.5); } }
+        .flash-success { animation: flash-success 0.7s ease-in-out; }
+        .bell-toast {
+            position: fixed; bottom: 20px; right: 20px; background-color: #6d28d9; color: white;
+            padding: 1rem 1.5rem; border-radius: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            z-index: 2000; opacity: 0; transform: translateY(20px); transition: all 0.4s ease-in-out;
+        }
+        .bell-toast.show { opacity: 1; transform: translateY(0); }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div class="magic-container w-full max-w-5xl p-6 sm:p-8 rounded-2xl">
+        
+        <header class="text-center mb-6">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">震欣科技AI作息系統</h1>
+            <div class="bg-gray-800 text-white rounded-lg p-4 mt-4 text-center shadow-inner">
+                <p id="current-date" class="text-lg"></p>
+                <p id="current-time" class="text-5xl font-mono font-bold tracking-wider"></p>
+            </div>
+        </header>
+
+        <!-- 打卡區 -->
+        <div id="punch-area" class="mb-4">
+            <label for="punch-input" class="block text-sm font-medium text-gray-700 mb-2">感應或輸入卡號</label>
+            <input type="password" id="punch-input" class="input-magic w-full p-4 text-2xl text-center border border-gray-300 rounded-lg focus:outline-none" placeholder="...卡號輸入區...">
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div>
+                <label for="shift-selector" class="block text-sm font-medium text-gray-700 mb-2">當前班別</label>
+                <select id="shift-selector" class="input-magic w-full p-3 text-lg border border-gray-300 rounded-lg"></select>
+            </div>
+            <div>
+                <label for="punch-status-selector" class="block text-sm font-medium text-gray-700 mb-2">打卡狀態 (手動調整)</label>
+                <select id="punch-status-selector" class="input-magic w-full p-3 text-lg border border-gray-300 rounded-lg">
+                    <option value="auto">系統自動判斷</option>
+                    <option value="in">上班</option>
+                    <option value="out">下班</option>
+                </select>
+            </div>
+        </div>
+        <div id="message-box" class="message-box min-h-[60px] p-4 mb-6 rounded-lg text-center font-semibold text-lg"></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center mb-6">
+            <button id="toggle-panel-btn" class="btn-magic bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6">管理者面板</button>
+            <button id="toggle-report-btn" class="btn-magic bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6">考勤報表</button>
+            <button id="toggle-furnace-btn" class="btn-magic bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6">考勤檔案庫</button>
+        </div>
+
+        <!-- 管理面板 -->
+        <div id="management-panel" class="collapsible-panel">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- 1. 人員資料名冊 -->
+                <section class="bg-white/50 p-4 rounded-lg shadow-md">
+                    <h2 class="text-xl font-bold text-gray-700 mb-4">人員資料名冊</h2>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input type="text" id="emp-id" class="input-magic p-2 border rounded col-span-1" placeholder="工號*"><input type="text" id="emp-name" class="input-magic p-2 border rounded col-span-1" placeholder="姓名*">
+                        <input type="text" id="emp-gender" class="input-magic p-2 border rounded col-span-1" placeholder="性別"><input type="text" id="emp-nationality" class="input-magic p-2 border rounded col-span-1" placeholder="國籍">
+                        <input type="text" id="emp-dept" class="input-magic p-2 border rounded col-span-2" placeholder="部門*">
+                        <input type="text" id="emp-card" class="input-magic p-2 border rounded col-span-1" placeholder="卡號*"><input type="text" id="emp-password" class="input-magic p-2 border rounded col-span-1" placeholder="打卡密碼*">
+                        <button id="add-emp-btn" class="btn-magic w-full bg-blue-500 hover:bg-blue-600 text-white py-2 col-span-2">新增/更新員工</button>
+                    </div>
+                    <div class="mt-4 border-t pt-4">
+                        <label for="import-emp-csv" class="block text-sm font-medium text-gray-700 mb-2">匯入名冊檔 (CSV)</label>
+                        <input type="file" id="import-emp-csv" accept=".csv" class="block text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                        <p class="text-xs text-gray-500 mt-1">格式: 工號,姓名,性別,國籍,部門,卡號,打卡密碼</p>
+                    </div>
+                    <div class="mt-4 border-t pt-4 text-center">
+                        <button id="manage-employees-btn" class="btn-magic bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-6">管理人員名冊</button>
+                    </div>
+                </section>
+
+                <!-- 2. 班別設定 -->
+                <section class="bg-white/50 p-4 rounded-lg shadow-md">
+                    <h2 class="text-xl font-bold text-gray-700 mb-4">班別設定</h2>
+                    <div id="shift-settings" class="space-y-2 max-h-[450px] overflow-y-auto pr-2"></div>
+                </section>
+            </div>
+            
+            <!-- 手動補登紀錄 -->
+            <section class="bg-white/50 p-4 rounded-lg shadow-md mt-8">
+                <h2 class="text-xl font-bold text-gray-700 mb-4">手動補登紀錄</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                    <div class="lg:col-span-2">
+                        <label for="manual-card" class="block text-xs font-medium text-gray-600">卡號/密碼</label>
+                        <input type="text" id="manual-card" class="input-magic w-full p-2 border rounded mt-1">
+                    </div>
+                    <div>
+                        <label for="manual-date" class="block text-xs font-medium text-gray-600">日期</label>
+                        <input type="date" id="manual-date" class="input-magic w-full p-2 border rounded mt-1">
+                    </div>
+                    <div>
+                        <label for="manual-time" class="block text-xs font-medium text-gray-600">時間</label>
+                        <input type="time" id="manual-time" class="input-magic w-full p-2 border rounded mt-1">
+                    </div>
+                    <div>
+                        <label for="manual-type" class="block text-xs font-medium text-gray-600">狀態</label>
+                        <select id="manual-type" class="input-magic w-full p-2 border rounded mt-1">
+                            <option value="in">上班</option>
+                            <option value="out">下班</option>
+                        </select>
+                    </div>
+                    <div class="sm:col-span-2 lg:col-span-5">
+                        <button id="manual-punch-btn" class="btn-magic w-full bg-yellow-500 hover:bg-yellow-600 text-black py-2">手動補登</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 作息響鈴 -->
+            <section class="bg-white/50 p-4 rounded-lg shadow-md mt-8">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-700">作息響鈴 🔔</h2>
+                    <div class="flex flex-wrap gap-2">
+                         <button id="bell-history-btn" class="btn-magic bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 text-sm">響鈴紀錄</button>
+                         <button id="manage-sounds-btn" class="btn-magic bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 text-sm">管理聲音庫</button>
+                         <button id="add-bell-btn" class="btn-magic bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 text-sm">新增響鈴</button>
+                    </div>
+                </div>
+                <div id="bell-schedule-list" class="space-y-3 max-h-80 overflow-y-auto pr-2"></div>
+            </section>
+        </div>
+
+        <!-- 考勤報表 -->
+        <div id="report-panel" class="collapsible-panel">
+            <h2 class="text-2xl font-bold text-gray-700 mb-4 text-center">考勤報表查詢</h2>
+            <div class="flex flex-col sm:flex-row gap-4 items-center mb-4">
+                <input type="date" id="report-start-date" class="input-magic flex-grow w-full sm:w-auto p-2 border rounded-lg">
+                <span class="text-gray-600">至</span>
+                <input type="date" id="report-end-date" class="input-magic flex-grow w-full sm:w-auto p-2 border rounded-lg">
+                <button id="generate-report-btn" class="btn-magic w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6">產生報表</button>
+                <button id="export-report-btn" class="btn-magic w-full sm:w-auto bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-6">匯出當前報表</button>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-inner">
+                <div id="report-table-container" class="overflow-auto" style="max-height: 400px;">
+                    <table class="min-w-full text-sm">
+                        <thead id="report-table-head" class="bg-gray-200 sticky top-0"></thead>
+                        <tbody id="report-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <div id="password-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-sm">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-gray-800">管理者密碼</h3>
+                <button id="change-admin-password-btn" class="text-xs text-blue-600 hover:text-blue-800">更改密碼</button>
+            </div>
+            <p class="text-sm text-gray-600 mb-4">請輸入管理者密碼。</p>
+            <input type="password" id="admin-password-input" class="input-magic w-full p-2 border rounded" placeholder="請輸入密碼...">
+            <p id="password-error" class="text-red-500 text-sm mt-2 h-4"></p>
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancel-password-btn" class="btn-magic bg-gray-300 hover:bg-gray-400 text-black py-2 px-4">取消</button>
+                <button id="confirm-password-btn" class="btn-magic bg-purple-600 hover:bg-purple-700 text-white py-2 px-4">確認</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="report-auth-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-sm">
+            <h3 class="text-lg font-bold text-gray-800 mb-4">打卡紀錄查詢密碼</h3>
+            <p class="text-sm text-gray-600 mb-4">請輸入您的卡號/密碼。</p>
+            <input type="password" id="report-auth-input" class="input-magic w-full p-2 border rounded" placeholder="輸入卡號/密碼...">
+            <p id="report-auth-error" class="text-red-500 text-sm mt-2 h-4"></p>
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancel-report-auth-btn" class="btn-magic bg-gray-300 hover:bg-gray-400 text-black py-2 px-4">取消</button>
+                <button id="confirm-report-auth-btn" class="btn-magic bg-green-600 hover:bg-green-700 text-white py-2 px-4">確認</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="furnace-auth-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-sm">
+             <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-red-800">考勤記錄庫密碼</h3>
+                <button id="change-furnace-password-btn" class="text-xs text-blue-600 hover:text-blue-800">更改密碼</button>
+            </div>
+            <p class="text-sm text-gray-600 mb-4">請輸入管理者密碼以開啟檔案庫。</p>
+            <input type="password" id="furnace-auth-input" class="input-magic w-full p-2 border rounded" placeholder="請輸入密碼...">
+            <p id="furnace-auth-error" class="text-red-500 text-sm mt-2 h-4"></p>
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancel-furnace-auth-btn" class="btn-magic bg-gray-300 hover:bg-gray-400 text-black py-2 px-4">取消</button>
+                <button id="confirm-furnace-auth-btn" class="btn-magic bg-red-600 hover:bg-red-700 text-white py-2 px-4">確認</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="furnace-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4 flex-shrink-0">
+                <h2 class="text-2xl font-bold text-gray-700">檔案庫管理</h2>
+                <button id="close-furnace-modal-btn" class="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
+            </div>
+            
+            <div class="flex-grow overflow-y-auto pr-4 space-y-8">
+                <!-- Manual Operations Section -->
+                <section class="bg-white/50 p-4 rounded-lg">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">清理舊的打卡紀錄</label>
+                        <p class="text-xs text-gray-500 mt-1 mb-2">此操作將永久刪除指定日期（含）之前的**所有**打卡紀錄，請謹慎操作。</p>
+                        <div class="flex items-center gap-4">
+                            <input type="date" id="clear-records-date" class="input-magic p-2 border rounded-lg">
+                            <button id="clear-records-btn" class="btn-magic bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6">清理</button>
+                        </div>
+                    </div>
+                    <div class="mt-6 border-t pt-6">
+                        <label class="block text-sm font-medium text-gray-700">匯出完整的打卡紀錄</label>
+                        <p class="text-xs text-gray-500 mt-1 mb-2">將所有打卡紀錄匯出成一份完整的檔案(CSV)。</p>
+                        <button id="export-all-records-btn" class="btn-magic w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-6">匯出所有紀錄</button>
+                    </div>
+                </section>
+                
+                <!-- Auto Task Settings Section -->
+                <section class="bg-white/50 p-4 rounded-lg">
+                    <h3 class="text-lg font-bold text-gray-700 mb-4">自動任務設定區</h3>
+                    <div id="auto-task-list" class="space-y-3 max-h-48 overflow-y-auto pr-2 mb-4"></div>
+                    <div class="border-t pt-4">
+                         <h4 class="text-md font-semibold text-gray-600 mb-3">新增自動任務</h4>
+                         <div class="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3 items-end">
+                             <div>
+                                 <label for="task-cycle" class="block text-xs font-medium text-gray-600">週期</label>
+                                 <select id="task-cycle" class="input-magic w-full p-2 border rounded mt-1 text-sm">
+                                     <option value="weekly">每周</option>
+                                     <option value="monthly">每月</option>
+                                 </select>
+                             </div>
+                             <div id="task-day-weekly-container">
+                                 <label for="task-day-weekly" class="block text-xs font-medium text-gray-600">日期</label>
+                                 <select id="task-day-weekly" class="input-magic w-full p-2 border rounded mt-1 text-sm">
+                                     <option value="1">週一</option><option value="2">週二</option><option value="3">週三</option>
+                                     <option value="4">週四</option><option value="5">週五</option><option value="6">週六</option>
+                                     <option value="0">週日</option>
+                                 </select>
+                             </div>
+                             <div id="task-day-monthly-container" class="hidden">
+                                 <label for="task-day-monthly" class="block text-xs font-medium text-gray-600">日期 (1-28號)</label>
+                                 <input type="number" id="task-day-monthly" value="1" min="1" max="28" class="input-magic w-full p-2 border rounded mt-1 text-sm">
+                             </div>
+                             <div>
+                                 <label for="task-time" class="block text-xs font-medium text-gray-600">時間</label>
+                                 <input type="time" id="task-time" value="07:00" class="input-magic w-full p-2 border rounded mt-1 text-sm">
+                             </div>
+                             <div>
+                                 <label for="task-name" class="block text-xs font-medium text-gray-600">任務</label>
+                                 <select id="task-name" class="input-magic w-full p-2 border rounded mt-1 text-sm">
+                                     <option value="export">匯出</option>
+                                     <option value="delete">刪除</option>
+                                 </select>
+                             </div>
+                             <div>
+                                 <label for="task-target" class="block text-xs font-medium text-gray-600">目標</label>
+                                 <select id="task-target" class="input-magic w-full p-2 border rounded mt-1 text-sm">
+                                     <option value="last_week">上週打卡紀錄</option>
+                                     <option value="last_month">上個月打卡紀錄</option>
+                                     <option value="last_week_bell">上週響鈴紀錄</option>
+                                     <option value="task_log">系統任務日誌</option>
+                                 </select>
+                             </div>
+                             <div class="col-span-2 lg:col-span-3">
+                                <div id="task-delete-warning" class="hidden text-center text-xs text-red-500 font-bold mb-2">
+                                     警告: 刪除為永久性操作，無法復原！
+                                 </div>
+                                 <button id="add-auto-task-btn" class="btn-magic w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-6 text-sm">新增任務</button>
+                             </div>
+                         </div>
+                    </div>
+                </section>
+
+                <!-- System Task Log Section -->
+                <section class="bg-white/50 p-4 rounded-lg">
+                    <h3 class="text-lg font-bold text-gray-700 mb-4">系統任務日誌</h3>
+                    <div id="task-log-list" class="space-y-2 max-h-48 overflow-y-auto pr-2 text-sm bg-gray-100 p-2 rounded"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div id="employee-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-4xl">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">人員名冊管理</h3>
+             <div class="max-h-96 overflow-y-auto bg-white rounded-lg shadow-inner">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-2 text-left">工號</th><th class="py-2 px-2 text-left">姓名</th><th class="py-2 px-2 text-left">部門</th><th class="py-2 px-2 text-left">性別</th><th class="py-2 px-2 text-left">國籍</th><th class="py-2 px-2 text-left">卡號</th><th class="py-2 px-2 text-left">密碼</th><th class="py-2 px-2 text-left">操作</th></tr></thead>
+                    <tbody id="employee-list-body"></tbody>
+                </table>
+            </div>
+            <div class="flex justify-between items-center mt-6">
+                <button id="export-employees-btn" class="btn-magic bg-green-500 hover:bg-green-600 text-white py-2 px-6">匯出人員名冊</button>
+                <button id="close-employee-modal-btn" class="btn-magic bg-gray-500 hover:bg-gray-600 text-white py-2 px-6">關閉</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="confirm-generic-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-sm">
+            <h3 class="text-lg font-bold text-yellow-600 mb-4" id="confirm-generic-title">確認操作</h3>
+            <p class="text-sm text-gray-600 mb-4" id="confirm-generic-message">您確定要執行此操作嗎？</p>
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancel-generic-btn" class="btn-magic bg-gray-300 hover:bg-gray-400 text-black py-2 px-4">取消</button>
+                <button id="confirm-generic-btn" class="btn-magic bg-red-600 hover:bg-red-700 text-white py-2 px-4">確認</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="bell-schedule-modal" class="modal-overlay"><div class="modal-content w-full max-w-lg"><h3 id="bell-modal-title" class="text-2xl font-bold text-gray-800 mb-6"></h3><form id="bell-schedule-form" class="space-y-4"><input type="hidden" id="bell-schedule-id" name="id"><div><label for="bell-title" class="block text-sm font-medium text-gray-700">場景標題</label><input type="text" id="bell-title" name="title" class="input-magic mt-1 block w-full" placeholder="例如：午茶時間到了！" required></div><div><label for="bell-time" class="block text-sm font-medium text-gray-700">響鈴時間</label><input type="time" id="bell-time" name="time" class="input-magic mt-1 block w-full" required></div><div><label class="block text-sm font-medium text-gray-700">重複週期</label><div class="mt-2 grid grid-cols-4 sm:grid-cols-7 gap-2" id="bell-days-container"><label class="border rounded-md py-2 px-3 flex items-center justify-center text-sm font-medium text-gray-700 cursor-pointer hover:bg-blue-50"><input type="checkbox" name="day" value="1" class="hidden peer"> <span class="peer-checked:text-blue-600 peer-checked:font-bold">一</span></label><label class="border rounded-md py-2 px-3 flex items-center justify-center text-sm font-medium text-gray-700 cursor-pointer hover:bg-blue-50"><input type="checkbox" name="day" value="2" class="hidden peer"> <span class="peer-checked:text-blue-600 peer-checked:font-bold">二</span></label><label class="border rounded-md py-2 px-3 flex items-center justify-center text-sm font-medium text-gray-700 cursor-pointer hover:bg-blue-50"><input type="checkbox" name="day" value="3" class="hidden peer"> <span class="peer-checked:text-blue-600 peer-checked:font-bold">三</span></label><label class="border rounded-md py-2 px-3 flex items-center justify-center text-sm font-medium text-gray-700 cursor-pointer hover:bg-blue-50"><input type="checkbox" name="day" value="4" class="hidden peer"> <span class="peer-checked:text-blue-600 peer-checked:font-bold">四</span></label><label class="border rounded-md py-2 px-3 flex items-center justify-center text-sm font-medium text-gray-700 cursor-pointer hover:bg-blue-50"><input type="checkbox" name="day" value="5" class="hidden peer"> <span class="peer-checked:text-blue-600 peer-checked:font-bold">五</span></label><label class="border rounded-md py-2 px-3 flex items-center justify-center text-sm font-medium text-gray-700 cursor-pointer hover:bg-blue-50"><input type="checkbox" name="day" value="6" class="hidden peer"> <span class="peer-checked:text-blue-600 peer-checked:font-bold">六</span></label><label class="border rounded-md py-2 px-3 flex items-center justify-center text-sm font-medium text-gray-700 cursor-pointer hover:bg-blue-50"><input type="checkbox" name="day" value="0" class="hidden peer"> <span class="peer-checked:text-blue-600 peer-checked:font-bold">日</span></label></div></div><div class="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label for="bell-sound" class="block text-sm font-medium text-gray-700">選擇音效</label><select id="bell-sound" name="sound" class="input-magic mt-1 block w-full"></select></div><div><label for="bell-duration" class="block text-sm font-medium text-gray-700">響鈴時長 (秒)</label><input type="number" id="bell-duration" name="duration" class="input-magic mt-1 block w-full" min="1" max="60" value="5"></div></div><div class="flex justify-end space-x-4 pt-4"><button type="button" id="bell-cancel-btn" class="btn-magic bg-gray-300 hover:bg-gray-400 text-black py-2 px-4">取消</button><button type="submit" class="btn-magic bg-blue-500 hover:bg-blue-600 text-white py-2 px-4">儲存</button></div></form></div></div>
+    <div id="bell-history-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-gray-800">響鈴歷史</h3>
+                <div class="flex items-center gap-4">
+                    <button id="clear-bell-history-btn" class="btn-magic bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3">清除所有紀錄</button>
+                    <button id="bell-close-history-btn" class="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
+                </div>
+            </div>
+            <div id="bell-history-list" class="space-y-3 max-h-96 overflow-y-auto pr-2"></div>
+        </div>
+    </div>
+    <div id="sound-manager-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-gray-800">聲音庫管理</h3>
+                <button id="close-sound-manager-btn" class="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
+            </div>
+            <div class="mb-6">
+                <label for="sound-upload-input" class="block text-sm font-medium text-gray-700 mb-2">新增聲音檔 (MP3, WAV)</label>
+                <input type="file" id="sound-upload-input" accept="audio/*" class="block text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+            </div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-3">我的收藏</h4>
+            <div id="sound-manager-list" class="space-y-3 max-h-64 overflow-y-auto pr-2 bg-gray-50 p-3 rounded-lg">
+                <!-- 自訂音效列表會顯示在這裡 -->
+            </div>
+        </div>
+    </div>
+    <div id="bell-toast-container"></div>
+    
+    <!-- 新增：密碼修改彈窗 -->
+    <div id="change-password-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-sm">
+            <h3 class="text-lg font-bold text-gray-800 mb-4" id="change-password-title">更改密碼</h3>
+            <div class="space-y-4">
+                <div>
+                    <label for="master-password-input" class="block text-sm font-medium text-gray-700">超級密碼</label>
+                    <input type="password" id="master-password-input" class="input-magic mt-1 block w-full" placeholder="請輸入超級密碼">
+                </div>
+                <div>
+                    <label for="new-password-input" class="block text-sm font-medium text-gray-700">新密碼</label>
+                    <input type="password" id="new-password-input" class="input-magic mt-1 block w-full" placeholder="請輸入新密碼">
+                </div>
+                <div>
+                    <label for="confirm-password-input" class="block text-sm font-medium text-gray-700">確認新密碼</label>
+                    <input type="password" id="confirm-password-input" class="input-magic mt-1 block w-full" placeholder="再次輸入新密碼">
+                </div>
+            </div>
+            <p id="change-password-error" class="text-red-500 text-sm mt-2 h-4"></p>
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancel-change-password-btn" class="btn-magic bg-gray-300 hover:bg-gray-400 text-black py-2 px-4">取消</button>
+                <button id="confirm-change-password-btn" class="btn-magic bg-blue-600 hover:bg-blue-700 text-white py-2 px-4">確認更改</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增：手動補登驗證彈窗 -->
+    <div id="manual-punch-auth-modal" class="modal-overlay">
+        <div class="modal-content w-full max-w-sm">
+            <h3 class="text-lg font-bold text-gray-800 mb-4">手動補登驗證</h3>
+            <p class="text-sm text-gray-600 mb-4">此為特殊權限，請輸入驗證密碼。</p>
+            <input type="password" id="manual-punch-auth-input" class="input-magic w-full p-2 border rounded" placeholder="請輸入超級密碼...">
+            <p id="manual-punch-auth-error" class="text-red-500 text-sm mt-2 h-4"></p>
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancel-manual-punch-auth-btn" class="btn-magic bg-gray-300 hover:bg-gray-400 text-black py-2 px-4">取消</button>
+                <button id="confirm-manual-punch-auth-btn" class="btn-magic bg-yellow-500 hover:bg-yellow-600 text-black py-2 px-4">確認</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const allElements = {
+            date: document.getElementById('current-date'), time: document.getElementById('current-time'),
+            punchInput: document.getElementById('punch-input'), shiftSelector: document.getElementById('shift-selector'),
+            punchStatusSelector: document.getElementById('punch-status-selector'),
+            messageBox: document.getElementById('message-box'), 
+            togglePanelBtn: document.getElementById('toggle-panel-btn'), managementPanel: document.getElementById('management-panel'),
+            toggleReportBtn: document.getElementById('toggle-report-btn'), reportPanel: document.getElementById('report-panel'),
+            toggleFurnaceBtn: document.getElementById('toggle-furnace-btn'),
+            emp: { id: document.getElementById('emp-id'), name: document.getElementById('emp-name'), gender: document.getElementById('emp-gender'), nationality: document.getElementById('emp-nationality'), dept: document.getElementById('emp-dept'), card: document.getElementById('emp-card'), password: document.getElementById('emp-password'), addBtn: document.getElementById('add-emp-btn'), importCsv: document.getElementById('import-emp-csv') },
+            shiftSettings: document.getElementById('shift-settings'),
+            manual: { card: document.getElementById('manual-card'), date: document.getElementById('manual-date'), time: document.getElementById('manual-time'), type: document.getElementById('manual-type'), punchBtn: document.getElementById('manual-punch-btn') },
+            report: { startDate: document.getElementById('report-start-date'), endDate: document.getElementById('report-end-date'), generateBtn: document.getElementById('generate-report-btn'), exportBtn: document.getElementById('export-report-btn'), tableHead: document.getElementById('report-table-head'), tableBody: document.getElementById('report-table-body'), tableContainer: document.getElementById('report-table-container') },
+            passwordModal: { overlay: document.getElementById('password-modal'), input: document.getElementById('admin-password-input'), error: document.getElementById('password-error'), confirmBtn: document.getElementById('confirm-password-btn'), cancelBtn: document.getElementById('cancel-password-btn'), changeBtn: document.getElementById('change-admin-password-btn') },
+            reportAuthModal: { overlay: document.getElementById('report-auth-modal'), input: document.getElementById('report-auth-input'), error: document.getElementById('report-auth-error'), confirmBtn: document.getElementById('confirm-report-auth-btn'), cancelBtn: document.getElementById('cancel-report-auth-btn') },
+            furnaceAuthModal: { overlay: document.getElementById('furnace-auth-modal'), input: document.getElementById('furnace-auth-input'), error: document.getElementById('furnace-auth-error'), confirmBtn: document.getElementById('confirm-furnace-auth-btn'), cancelBtn: document.getElementById('cancel-furnace-auth-btn'), changeBtn: document.getElementById('change-furnace-password-btn') },
+            furnaceModal: { overlay: document.getElementById('furnace-modal'), closeBtn: document.getElementById('close-furnace-modal-btn') },
+            employeeModal: { overlay: document.getElementById('employee-modal'), listBody: document.getElementById('employee-list-body'), manageBtn: document.getElementById('manage-employees-btn'), closeBtn: document.getElementById('close-employee-modal-btn'), exportBtn: document.getElementById('export-employees-btn') },
+            confirmGenericModal: { overlay: document.getElementById('confirm-generic-modal'), title: document.getElementById('confirm-generic-title'), message: document.getElementById('confirm-generic-message'), confirmBtn: document.getElementById('confirm-generic-btn'), cancelBtn: document.getElementById('cancel-generic-btn') },
+            clearRecords: { dateInput: document.getElementById('clear-records-date'), clearBtn: document.getElementById('clear-records-btn'), exportAllBtn: document.getElementById('export-all-records-btn') },
+            bell: { 
+                scheduleList: document.getElementById('bell-schedule-list'), addBtn: document.getElementById('add-bell-btn'), historyBtn: document.getElementById('bell-history-btn'), 
+                modal: document.getElementById('bell-schedule-modal'), modalTitle: document.getElementById('bell-modal-title'), form: document.getElementById('bell-schedule-form'), 
+                scheduleId: document.getElementById('bell-schedule-id'), title: document.getElementById('bell-title'), time: document.getElementById('bell-time'), 
+                daysContainer: document.getElementById('bell-days-container'), soundSelect: document.getElementById('bell-sound'), durationInput: document.getElementById('bell-duration'), 
+                cancelBtn: document.getElementById('bell-cancel-btn'), 
+                historyModal: document.getElementById('bell-history-modal'), historyList: document.getElementById('bell-history-list'), 
+                closeHistoryBtn: document.getElementById('bell-close-history-btn'), clearHistoryBtn: document.getElementById('clear-bell-history-btn'), 
+                toastContainer: document.getElementById('bell-toast-container') 
+            },
+            soundManager: {
+                manageBtn: document.getElementById('manage-sounds-btn'),
+                modal: document.getElementById('sound-manager-modal'),
+                closeBtn: document.getElementById('close-sound-manager-btn'),
+                uploadInput: document.getElementById('sound-upload-input'),
+                list: document.getElementById('sound-manager-list')
+            },
+            changePasswordModal: {
+                overlay: document.getElementById('change-password-modal'),
+                title: document.getElementById('change-password-title'),
+                masterInput: document.getElementById('master-password-input'),
+                newInput: document.getElementById('new-password-input'),
+                confirmInput: document.getElementById('confirm-password-input'),
+                error: document.getElementById('change-password-error'),
+                confirmBtn: document.getElementById('confirm-change-password-btn'),
+                cancelBtn: document.getElementById('cancel-change-password-btn')
+            },
+            manualPunchAuthModal: {
+                overlay: document.getElementById('manual-punch-auth-modal'),
+                input: document.getElementById('manual-punch-auth-input'),
+                error: document.getElementById('manual-punch-auth-error'),
+                confirmBtn: document.getElementById('confirm-manual-punch-auth-btn'),
+                cancelBtn: document.getElementById('cancel-manual-punch-auth-btn')
+            },
+            autoTask: {
+                list: document.getElementById('auto-task-list'),
+                addBtn: document.getElementById('add-auto-task-btn'),
+                cycle: document.getElementById('task-cycle'),
+                time: document.getElementById('task-time'),
+                dayWeeklyContainer: document.getElementById('task-day-weekly-container'),
+                dayWeekly: document.getElementById('task-day-weekly'),
+                dayMonthlyContainer: document.getElementById('task-day-monthly-container'),
+                dayMonthly: document.getElementById('task-day-monthly'),
+                name: document.getElementById('task-name'),
+                target: document.getElementById('task-target'),
+                deleteWarning: document.getElementById('task-delete-warning'),
+                logList: document.getElementById('task-log-list')
+            }
+        };
+
+        let employees = [], punchRecords = [], shifts = [], bell_schedules = [], bell_alarmHistory = [], customSounds = [], autoTasks = [], taskLog = [];
+        let adminPassword, furnacePassword, lastLogResetTimestamp;
+        let editingEmployeeId = null, lastCheckedMinute = -1, reportPanelTimeout, currentReportAuthId = null, genericConfirmCallback = null;
+        let punchInputTimeout = null, passwordChangeTarget = null;
+        let bell_lastCheckedMinute = -1, bell_toneStarted = false, bell_currentSound = null;
+        
+        const MASTER_CHANGE_PASSWORD = '0927';
+        const MANUAL_PUNCH_PASSWORD = '0927';
+        const DUPLICATE_PUNCH_MINUTES = 10;
+        const REPORT_AUTO_CLOSE_MINUTES = 10;
+
+        const saveData = (key, data) => localStorage.setItem(key, JSON.stringify(data));
+        const loadData = (key, defaultValue) => { const data = localStorage.getItem(key); return data ? JSON.parse(data) : defaultValue; };
+
+        const showMessage = (text, type = 'info') => {
+            const el = allElements.messageBox;
+            el.textContent = text;
+            el.className = 'message-box min-h-[60px] p-4 mb-6 rounded-lg text-center font-semibold text-lg show';
+            const typeClasses = { success: 'bg-green-100 text-green-800', error: 'bg-red-100 text-red-800', info: 'bg-yellow-100 text-yellow-800' };
+            el.classList.add(...(typeClasses[type] || typeClasses.info).split(' '));
+            setTimeout(() => el.classList.remove('show'), 5000);
+        };
+        
+        const flashPunchInput = (type) => {
+            const el = allElements.punchInput;
+            const className = type === 'success' ? 'flash-success' : 'shake-error';
+            el.classList.add(className);
+            setTimeout(() => el.classList.remove(className), 700);
+        };
+
+        const updateClock = () => {
+            const now = new Date();
+            allElements.date.textContent = now.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+            allElements.time.textContent = now.toLocaleTimeString('zh-TW', { hour12: false });
+            const currentMinute = now.getMinutes();
+            if (currentMinute !== lastCheckedMinute) { 
+                determineCurrentShift(); 
+                bell_checkSchedules();
+                checkAutoTasks();
+                lastCheckedMinute = currentMinute; 
+            }
+        };
+
+        const executeManualPunch = () => {
+            const { card, date, time, type } = allElements.manual;
+            if (!card.value || !date.value || !time.value) {
+                showMessage('請填寫完整的卡號/密碼、日期與時間。', 'error');
+                return;
+            }
+            const punchDateTime = new Date(`${date.value}T${time.value}`);
+            handlePunch(card.value, punchDateTime, type.value);
+        };
+
+        const handlePunch = (punchId, punchDateTime, manualType = null) => {
+            if (punchInputTimeout) clearTimeout(punchInputTimeout);
+            const id = punchId.trim();
+            allElements.punchInput.value = '';
+
+            if (!id) { showMessage('請輸入卡號或密碼！', 'error'); flashPunchInput('error'); allElements.punchInput.focus(); return; }
+            const employee = employees.find(emp => emp.card === id || emp.password === id);
+            if (!employee) { showMessage(`找不到卡號/密碼為 ${id} 的員工。`, 'error'); flashPunchInput('error'); allElements.punchInput.focus(); return; }
+            
+            flashPunchInput('success'); 
+            const now = punchDateTime || new Date();
+            const todayStr = now.toISOString().split('T')[0];
+            const todayRecords = punchRecords.filter(r => r.employeeId === employee.id && r.timestamp.startsWith(todayStr)).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            const lastRecord = todayRecords[todayRecords.length - 1];
+            let punchType;
+
+            const manualStatus = allElements.punchStatusSelector.value;
+            if (manualStatus !== 'auto') {
+                punchType = manualStatus;
+            } else if (manualType) {
+                punchType = manualType;
+            } else {
+                if (lastRecord) {
+                    const timeDiff = now.getTime() - new Date(lastRecord.timestamp).getTime();
+                    if (timeDiff < DUPLICATE_PUNCH_MINUTES * 60 * 1000) { showMessage(`${employee.name}，您在短時間内重複打卡了！`, 'info'); punchType = 'duplicate'; }
+                }
+                if (!punchType) { const validPunchesToday = todayRecords.filter(r => r.type === 'in' || r.type === 'out'); punchType = (validPunchesToday.length % 2 === 0) ? 'in' : 'out'; }
+            }
+
+            const newRecord = { recordId: `rec_${Date.now()}`, employeeId: employee.id, name: employee.name, type: punchType, timestamp: now.toISOString(), shift: allElements.shiftSelector.value };
+            punchRecords.push(newRecord);
+            saveData('punch_records_v2', punchRecords);
+            let typeText = {'in': '上班', 'out': '下班', 'duplicate': '重複打卡'}[punchType] || '';
+            showMessage(`${employee.name}，${typeText}紀錄成功！時間：${now.toLocaleTimeString('zh-TW', {hour12: false})}`, 'success');
+            allElements.punchStatusSelector.value = 'auto';
+            allElements.punchInput.focus();
+        };
+
+        const determineCurrentShift = () => {
+            const now = new Date();
+            const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
+            let activeShift = null;
+            for (const shift of shifts) {
+                if (shift.start && shift.end) {
+                    const [startH, startM] = shift.start.split(':').map(Number);
+                    const [endH, endM] = shift.end.split(':').map(Number);
+                    const startTime = startH * 60 + startM;
+                    const endTime = endH * 60 + endM;
+                    if (endTime < startTime) { if (currentTimeInMinutes >= startTime || currentTimeInMinutes < endTime) { activeShift = shift; break; } } 
+                    else { if (currentTimeInMinutes >= startTime && currentTimeInMinutes < endTime) { activeShift = shift; break; } }
+                }
+            }
+            if (activeShift) { allElements.shiftSelector.value = activeShift.name; return; }
+            const validShifts = shifts.filter(s => s.name && s.start && s.end).map(s => ({ ...s, startTimeInMinutes: s.start.split(':')[0] * 60 + s.start.split(':')[1] * 1 })).sort((a, b) => a.startTimeInMinutes - b.startTimeInMinutes);
+            const nextShiftToday = validShifts.find(s => s.startTimeInMinutes > currentTimeInMinutes);
+            if (nextShiftToday) { allElements.shiftSelector.value = nextShiftToday.name; } 
+            else if (validShifts.length > 0) { allElements.shiftSelector.value = validShifts[0].name; }
+        };
+
+        const populateShiftSelector = () => {
+            allElements.shiftSelector.innerHTML = '';
+            shifts.forEach(shift => {
+                if(shift.name && shift.start && shift.end) {
+                    const option = document.createElement('option');
+                    option.value = shift.name;
+                    option.textContent = `${shift.name} (${shift.start} - ${shift.end})`;
+                    allElements.shiftSelector.appendChild(option);
+                }
+            });
+            determineCurrentShift();
+        };
+
+        const renderShiftSettings = () => {
+            allElements.shiftSettings.innerHTML = '';
+            shifts.forEach((shift, index) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center gap-2';
+                div.innerHTML = `<input type="text" value="${shift.name}" placeholder="班別名稱" class="input-magic w-1/3 p-1 border rounded shift-name" data-index="${index}"><input type="time" value="${shift.start}" class="input-magic w-1/3 p-1 border rounded shift-start" data-index="${index}"><input type="time" value="${shift.end}" class="input-magic w-1/3 p-1 border rounded shift-end" data-index="${index}">`;
+                allElements.shiftSettings.appendChild(div);
+            });
+            allElements.shiftSettings.querySelectorAll('input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const index = e.target.dataset.index;
+                    const prop = e.target.classList.contains('shift-name') ? 'name' : (e.target.classList.contains('shift-start') ? 'start' : 'end');
+                    shifts[index][prop] = e.target.value;
+                    saveData('shifts_v2', shifts);
+                    populateShiftSelector();
+                    showMessage('班別設定已更新。', 'info');
+                });
+            });
+        };
+        
+        const renderEmployeeList = () => {
+            allElements.employeeModal.listBody.innerHTML = '';
+            employees.forEach(emp => {
+                const row = document.createElement('tr');
+                row.className = 'border-b';
+                row.dataset.id = emp.id;
+                row.innerHTML = `<td class="py-2 px-2">${emp.id}</td><td class="py-2 px-2">${emp.name}</td><td class="py-2 px-2">${emp.department}</td> <td class="py-2 px-2">${emp.gender}</td><td class="py-2 px-2">${emp.nationality}</td> <td class="py-2 px-2">${emp.card}</td><td class="py-2 px-2">${emp.password}</td><td class="py-2 px-2"><button class="text-blue-500 hover:text-blue-700 text-xs edit-btn" data-id="${emp.id}">編輯</button><button class="text-red-500 hover:text-red-700 text-xs ml-2 delete-btn" data-id="${emp.id}">刪除</button></td>`;
+                allElements.employeeModal.listBody.appendChild(row);
+            });
+        };
+        
+        const handleEmployeeFormSubmit = () => {
+            const { id, name, gender, nationality, dept, card, password } = allElements.emp;
+            const empData = { id: id.value.trim().toUpperCase(), name: name.value.trim(), gender: gender.value.trim(), nationality: nationality.value.trim(), department: dept.value.trim(), card: card.value.trim(), password: password.value.trim() };
+            if (!empData.id || !empData.name || !empData.department || !empData.card || !empData.password) { showMessage('工號、姓名、部門、卡號和密碼為必填欄位。', 'error'); return; }
+            if (editingEmployeeId) {
+                const index = employees.findIndex(e => e.id === editingEmployeeId);
+                if (index > -1) { employees[index] = { ...employees[index], ...empData }; showMessage(`員工 ${empData.name} 的資料已更新。`, 'success'); }
+            } else {
+                if (employees.some(e => e.id === empData.id || e.card === empData.card)) { showMessage(`工號 ${empData.id} 或卡號 ${empData.card} 已存在。`, 'error'); return; }
+                employees.push(empData); showMessage(`員工 ${empData.name} 已成功新增！`, 'success');
+            }
+            saveData('employees_v2', employees); renderEmployeeList(); resetEmployeeForm();
+        };
+
+        const resetEmployeeForm = () => {
+            Object.values(allElements.emp).forEach(input => { if(input.tagName === 'INPUT') input.value = ''; });
+            allElements.emp.id.disabled = false; allElements.emp.addBtn.textContent = '新增/更新員工'; editingEmployeeId = null;
+        };
+
+        const loadEmployeesFromCSV = (file) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const lines = event.target.result.split(/\r?\n/); let addedCount = 0; let skippedCount = 0;
+                for(let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim(); if (!line) continue;
+                    const columns = line.split(',').map(s => { let str = s.trim(); if (str.startsWith('"') && str.endsWith('"')) { return str.substring(1, str.length - 1); } return str; });
+                    if (columns.length !== 7) { skippedCount++; continue; }
+                    const [id, name, gender, nationality, department, card, password] = columns;
+                    if (id && name && department && card && password && !employees.some(emp => emp.id === id)) { employees.push({ id, name, gender, nationality, department, card, password }); addedCount++; } else { skippedCount++; }
+                }
+                saveData('employees_v2', employees); renderEmployeeList(); showMessage(`成功匯入 ${addedCount} 位員工，跳過 ${skippedCount} 筆格式不符或已存在的資料。`, 'success');
+            };
+            reader.readAsText(file, 'UTF-8');
+        };
+
+        const openPasswordModal = () => { allElements.passwordModal.overlay.classList.add('show'); allElements.passwordModal.input.focus(); allElements.passwordModal.input.value = ''; allElements.passwordModal.error.textContent = ''; };
+        const closePasswordModal = () => allElements.passwordModal.overlay.classList.remove('show');
+        const checkPassword = () => {
+            if (allElements.passwordModal.input.value === adminPassword) {
+                closePasswordModal(); const panel = allElements.managementPanel; panel.style.maxHeight = panel.scrollHeight + "px";
+            } else { allElements.passwordModal.error.textContent = '密碼錯誤，請重試。'; }
+        };
+        const openEmployeeModal = () => { renderEmployeeList(); allElements.employeeModal.overlay.classList.add('show'); };
+        const closeEmployeeModal = () => allElements.employeeModal.overlay.classList.remove('show');
+        
+        const handleClearRecords = () => {
+            const date = allElements.clearRecords.dateInput.value; if(!date) { showMessage('請選擇要清理的日期。', 'error'); return; }
+            showGenericConfirm('清理舊紀錄', `此操作將永久刪除 ${date} (含) 之前的所有打卡紀錄，確定要繼續嗎？`, () => {
+                const dateStr = allElements.clearRecords.dateInput.value; const cutoffDate = new Date(dateStr); cutoffDate.setHours(23, 59, 59, 999);
+                const originalCount = punchRecords.length; punchRecords = punchRecords.filter(record => new Date(record.timestamp) > cutoffDate);
+                saveData('punch_records_v2', punchRecords);
+                showMessage(`作業完成，成功清理了 ${originalCount - punchRecords.length} 筆舊紀錄。`, 'success');
+            });
+        };
+        
+        const showGenericConfirm = (title, message, onConfirm) => {
+            allElements.confirmGenericModal.title.textContent = title;
+            allElements.confirmGenericModal.message.textContent = message;
+            genericConfirmCallback = onConfirm;
+            allElements.confirmGenericModal.overlay.classList.add('show');
+        };
+
+        const handleGlobalKeyPress = (e) => {
+            const activeEl = document.activeElement; const isModalOpen = document.querySelector('.modal-overlay.show');
+            const isInputFocused = ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName);
+            if (!isInputFocused && !isModalOpen) { 
+                if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { 
+                    e.preventDefault(); 
+                    allElements.punchInput.value = '';
+                    allElements.punchInput.focus(); 
+                    allElements.punchInput.value = e.key; 
+                } 
+            }
+        };
+
+        const closeReportPanel = () => {
+            const panel = allElements.reportPanel;
+            if (panel.style.maxHeight) {
+                panel.style.maxHeight = null;
+                allElements.report.tableBody.innerHTML = '';
+                allElements.report.tableHead.innerHTML = '';
+                if (reportPanelTimeout) { clearTimeout(reportPanelTimeout); }
+                showMessage('考勤報表已關閉。', 'info');
+            }
+        };
+        
+        const openReportPanel = (authId) => {
+            currentReportAuthId = authId;
+            allElements.reportAuthModal.overlay.classList.remove('show');
+            allElements.reportAuthModal.input.value = '';
+            
+            const panel = allElements.reportPanel;
+            panel.style.maxHeight = panel.scrollHeight + "px";
+            
+            if (reportPanelTimeout) clearTimeout(reportPanelTimeout);
+            reportPanelTimeout = setTimeout(closeReportPanel, REPORT_AUTO_CLOSE_MINUTES * 60 * 1000);
+            
+            showMessage('請設定日期區間後產生報表。', 'info');
+        };
+
+        const generateReportData = () => {
+            if (!currentReportAuthId) {
+                showMessage('無效的授權，請重新開啟報表。', 'error');
+                closeReportPanel();
+                return;
+            }
+            const startDateStr = allElements.report.startDate.value; const endDateStr = allElements.report.endDate.value;
+            if (!startDateStr || !endDateStr) { showMessage('請選擇報表的起始與結束日期。', 'error'); return; }
+            const startDate = new Date(startDateStr); startDate.setHours(0, 0, 0, 0);
+            const endDate = new Date(endDateStr); endDate.setHours(23, 59, 59, 999);
+            if (startDate > endDate) { showMessage('起始日期不能晚於結束日期。', 'error'); return; }
+
+            let recordsToDisplay = [];
+            if (currentReportAuthId === adminPassword) {
+                recordsToDisplay = punchRecords.filter(r => { const d = new Date(r.timestamp); return d >= startDate && d <= endDate; });
+            } else {
+                const employee = employees.find(emp => emp.card === currentReportAuthId || emp.password === currentReportAuthId);
+                if (!employee) { showMessage('找不到此卡號/密碼對應的員工。', 'error'); return; }
+                recordsToDisplay = punchRecords.filter(r => r.employeeId === employee.id && (new Date(r.timestamp) >= startDate && new Date(r.timestamp) <= endDate));
+            }
+            
+            allElements.report.tableHead.innerHTML = `<tr><th class="py-2 px-3 text-left">工號</th><th class="py-2 px-3 text-left">姓名</th><th class="py-2 px-3 text-left">打卡日期</th><th class="py-2 px-3 text-left">打卡時間</th><th class="py-2 px-3 text-left">班別(時段)</th><th class="py-2 px-3 text-left">狀態</th></tr>`;
+            allElements.report.tableBody.innerHTML = '';
+            
+            if (recordsToDisplay.length === 0) { allElements.report.tableBody.innerHTML = `<tr><td colspan="6" class="text-center py-4">該條件下沒有任何打卡紀錄。</td></tr>`; } 
+            else {
+                recordsToDisplay.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).forEach(record => {
+                    const punchDate = new Date(record.timestamp); const row = document.createElement('tr');
+                    let statusText = {'in': '上班', 'out': '下班', 'duplicate': '<span class="text-orange-500 font-bold">重複打卡</span>'}[record.type] || '未知';
+                    row.innerHTML = `<td class="py-2 px-3 border-b">${record.employeeId}</td><td class="py-2 px-3 border-b">${record.name}</td><td class="py-2 px-3 border-b">${punchDate.toLocaleDateString('zh-TW')}</td><td class="py-2 px-3 border-b">${punchDate.toLocaleTimeString('zh-TW', {hour12: false})}</td><td class="py-2 px-3 border-b">${record.shift}</td><td class="py-2 px-3 border-b">${statusText}</td>`;
+                    allElements.report.tableBody.appendChild(row);
+                });
+            }
+            
+            setTimeout(() => {
+                const panel = allElements.reportPanel;
+                panel.style.maxHeight = panel.scrollHeight + "px";
+            }, 10);
+
+            showMessage('報表已產生。', 'success');
+        };
+        
+        const exportToCSV = (data, filename) => {
+            const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + data.join('\n');
+            const link = document.createElement("a");
+            link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", filename);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        };
+        
+        const updateManagementPanelHeight = () => {
+            const panel = allElements.managementPanel;
+            if (panel.style.maxHeight && panel.style.maxHeight !== "0px") {
+                panel.style.maxHeight = panel.scrollHeight + "px";
+            }
+        };
+
+        const bell_initAudio = async () => { if (bell_toneStarted) return; try { await Tone.start(); bell_toneStarted = true; showMessage("響鈴功能已啟動！", "success"); } catch (e) { console.error("Tone.js 啟動失敗:", e); showMessage("音效功能啟動失敗", "error"); } };
+        const bell_checkSchedules = () => { if (!bell_toneStarted || document.hidden) return; const now = new Date(); const currentMinute = now.getMinutes(); if (currentMinute === bell_lastCheckedMinute) return; bell_lastCheckedMinute = currentMinute; const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; const currentDay = now.getDay(); bell_schedules.forEach(schedule => { if (schedule.time === currentTime && schedule.days.includes(currentDay)) { bell_triggerAlarm(schedule); } }); };
+        const bell_stopCurrentSound = () => { if (bell_currentSound) { if (bell_currentSound.isTone) { if (Tone.Transport.state === 'started') Tone.Transport.stop(); bell_currentSound.part.stop(0).dispose(); } else { bell_currentSound.player.pause(); bell_currentSound.player.currentTime = 0; } bell_currentSound = null; } };
+        
+        const bell_playSound = (schedule) => {
+            bell_stopCurrentSound();
+            const defaultSounds = {
+                'default': [{ time: '0:0', note: 'G4' }, { time: '0:2', note: 'G4' }],
+                'forest': [{ time: '0:0', note: 'C4' }, { time: '0:1', note: 'E4' }, { time: '0:2', note: 'G4' }],
+                'crystal': [{ time: '0:0', note: 'C5' }, { time: '0:1', note: 'E5' }, { time: '0:2', note: 'G5' }, { time: '0:3', note: 'C6' }]
+            };
+
+            if (defaultSounds[schedule.sound]) {
+                const synth = new Tone.Synth().toDestination();
+                const melody = defaultSounds[schedule.sound];
+                const part = new Tone.Part((time, value) => {
+                    synth.triggerAttackRelease(value.note, '8n', time);
+                }, melody).start(0);
+                part.loop = true;
+                part.loopEnd = '1m';
+                Tone.Transport.start();
+                bell_currentSound = { isTone: true, part: part };
+                setTimeout(bell_stopCurrentSound, schedule.duration * 1000);
+            } else {
+                const customSound = customSounds.find(s => s.id === schedule.sound);
+                if (customSound && customSound.data) {
+                    const audioPlayer = new Audio(customSound.data);
+                    audioPlayer.play().catch(e => console.error("自訂音效播放失敗:", e));
+                    bell_currentSound = { isTone: false, player: audioPlayer };
+                    setTimeout(bell_stopCurrentSound, schedule.duration * 1000);
+                } else {
+                    console.warn(`找不到音效: ${schedule.sound}，播放預設音效。`);
+                    schedule.sound = 'default'; // 降級為預設
+                    bell_playSound(schedule);
+                }
+            }
+        };
+
+        const bell_triggerAlarm = (schedule) => { bell_playSound(schedule); const lastRecord = bell_alarmHistory[0]; if (!lastRecord || lastRecord.title !== schedule.title || (Date.now() - lastRecord.timestamp > 60000)) { bell_alarmHistory.unshift({ title: schedule.title, time: schedule.time, timestamp: Date.now() }); saveData('bell_history_v3', bell_alarmHistory); } const toast = document.createElement('div'); toast.className = 'bell-toast show'; toast.innerHTML = `<div class="font-bold">🔔 ${schedule.title}</div><div class="text-sm opacity-80">現在是 ${schedule.time}，該進行下個活動了！</div>`; allElements.bell.toastContainer.appendChild(toast); setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 7000); };
+        const bell_renderSchedules = () => { const listEl = allElements.bell.scheduleList; listEl.innerHTML = ''; if (bell_schedules.length === 0) { listEl.innerHTML = `<p class="text-center text-gray-500 py-4">還沒有設定任何響鈴喔！</p>`; } else { bell_schedules.sort((a, b) => a.time.localeCompare(b.time)); bell_schedules.forEach(schedule => { const itemEl = document.createElement('div'); itemEl.className = 'bg-gray-50 p-3 rounded-lg flex items-center justify-between border-l-4 border-blue-400'; itemEl.dataset.id = schedule.id; const dayMap = ['日', '一', '二', '三', '四', '五', '六']; let repeatText = schedule.days.length === 7 ? '每日' : schedule.days.sort().map(d => `週${dayMap[d]}`).join('、'); itemEl.innerHTML = `<div><p class="font-bold text-md text-gray-800">${schedule.title}</p><p class="text-sm text-gray-600">${schedule.time} | ${repeatText}</p></div><div class="flex items-center space-x-2"><button class="bell-edit-btn text-gray-400 hover:text-blue-600 p-1" title="編輯"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" /></svg></button><button class="bell-delete-btn text-gray-400 hover:text-red-600 p-1" title="刪除"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div>`; listEl.appendChild(itemEl); }); } updateManagementPanelHeight(); };
+        const bell_renderHistory = () => { const listEl = allElements.bell.historyList; listEl.innerHTML = ''; if (bell_alarmHistory.length === 0) { listEl.innerHTML = `<p class="text-center text-gray-500 py-4">目前沒有任何紀錄。</p>`; return; } bell_alarmHistory.forEach(record => { const itemEl = document.createElement('div'); itemEl.className = 'bg-gray-100 p-3 rounded-lg flex items-center justify-between'; const d = new Date(record.timestamp); const dateStr = d.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' }); const timeStr = d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false }); itemEl.innerHTML = `<div><p class="font-bold text-md text-gray-700">${record.title}</p><p class="text-sm text-gray-500">響鈴於：${dateStr} ${timeStr}</p></div><span class="text-sm font-medium text-gray-600">${record.time}</span>`; listEl.appendChild(itemEl); }); };
+        
+        const bell_populateSoundSelector = () => {
+            const select = allElements.bell.soundSelect;
+            const currentValue = select.value;
+            select.innerHTML = `
+                <optgroup label="預設音效">
+                    <option value="default">預設鈴聲</option>
+                    <option value="forest">森林耳語</option>
+                    <option value="crystal">水晶風鈴</option>
+                </optgroup>
+            `;
+            if (customSounds.length > 0) {
+                const customGroup = document.createElement('optgroup');
+                customGroup.label = '自訂聲音';
+                customSounds.forEach(sound => {
+                    const option = document.createElement('option');
+                    option.value = sound.id;
+                    option.textContent = sound.name;
+                    customGroup.appendChild(option);
+                });
+                select.appendChild(customGroup);
+            }
+            select.value = currentValue;
+        };
+
+        const bell_openModal = (schedule = null) => { 
+            const { form, durationInput, daysContainer, modalTitle, scheduleId, title, time, soundSelect, modal } = allElements.bell; 
+            form.reset(); 
+            durationInput.value = 5; 
+            daysContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false); 
+            bell_populateSoundSelector();
+            if (schedule) { 
+                modalTitle.textContent = '修改響鈴場景'; 
+                scheduleId.value = schedule.id; 
+                title.value = schedule.title; 
+                time.value = schedule.time; 
+                soundSelect.value = schedule.sound; 
+                durationInput.value = schedule.duration; 
+                schedule.days.forEach(day => { const cb = daysContainer.querySelector(`input[value="${day}"]`); if (cb) cb.checked = true; }); 
+            } else { 
+                modalTitle.textContent = '新增響鈴場景'; 
+                scheduleId.value = ''; 
+            } 
+            modal.classList.add('show'); 
+        };
+        const bell_closeModal = () => allElements.bell.modal.classList.remove('show');
+        const bell_openHistoryModal = () => { bell_renderHistory(); allElements.bell.historyModal.classList.add('show'); };
+        const bell_closeHistoryModal = () => allElements.bell.historyModal.classList.remove('show');
+
+        // --- Sound Manager Functions ---
+        const openSoundManager = () => {
+            renderSoundManagerList();
+            allElements.soundManager.modal.classList.add('show');
+        };
+        const closeSoundManager = () => {
+            allElements.soundManager.modal.classList.remove('show');
+        };
+        const renderSoundManagerList = () => {
+            const listEl = allElements.soundManager.list;
+            listEl.innerHTML = '';
+            if (customSounds.length === 0) {
+                listEl.innerHTML = `<p class="text-center text-gray-500 py-4">聲音庫目前是空的。</p>`;
+                return;
+            }
+            customSounds.forEach(sound => {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'bg-white p-3 rounded-lg flex items-center justify-between';
+                itemEl.innerHTML = `
+                    <p class="text-gray-700 truncate pr-4">${sound.name}</p>
+                    <button class="sound-delete-btn text-red-400 hover:text-red-600 p-1" data-id="${sound.id}" title="刪除">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                `;
+                listEl.appendChild(itemEl);
+            });
+        };
+        const handleSoundUpload = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const soundData = {
+                    id: `snd_${Date.now()}`,
+                    name: file.name,
+                    data: event.target.result
+                };
+                customSounds.push(soundData);
+                saveData('custom_sounds_v2', customSounds);
+                renderSoundManagerList();
+                showMessage(`聲音檔「${file.name}」已新增！`, 'success');
+                e.target.value = ''; // Reset input
+            };
+            reader.readAsDataURL(file);
+        };
+        const handleDeleteSound = (soundId) => {
+            const sound = customSounds.find(s => s.id === soundId);
+            if (!sound) return;
+
+            showGenericConfirm('刪除聲音檔', `確定要刪除「${sound.name}」這個聲音檔嗎？`, () => {
+                customSounds = customSounds.filter(s => s.id !== soundId);
+                saveData('custom_sounds_v2', customSounds);
+                renderSoundManagerList();
+                showMessage(`聲音檔已刪除。`, 'info');
+            });
+        };
+
+        // --- Password Change Functions ---
+        const openChangePasswordModal = (target) => {
+            passwordChangeTarget = target;
+            const { overlay, title, masterInput, newInput, confirmInput, error } = allElements.changePasswordModal;
+            title.textContent = target === 'admin' ? '更改管理者密碼' : '更改考勤庫密碼';
+            masterInput.value = '';
+            newInput.value = '';
+            confirmInput.value = '';
+            error.textContent = '';
+            overlay.classList.add('show');
+        };
+
+        const closeChangePasswordModal = () => {
+            allElements.changePasswordModal.overlay.classList.remove('show');
+        };
+
+        const handleChangePassword = () => {
+            const { masterInput, newInput, confirmInput, error } = allElements.changePasswordModal;
+            const masterPass = masterInput.value;
+            const newPass = newInput.value;
+            const confirmPass = confirmInput.value;
+
+            if (masterPass !== MASTER_CHANGE_PASSWORD) {
+                error.textContent = '超級密碼錯誤！';
+                return;
+            }
+            if (!newPass || newPass !== confirmPass) {
+                error.textContent = '新密碼不能為空或兩次輸入不一致。';
+                return;
+            }
+
+            if (passwordChangeTarget === 'admin') {
+                adminPassword = newPass;
+                saveData('admin_password_v1', adminPassword);
+                showMessage('管理者密碼已成功更新！', 'success');
+            } else if (passwordChangeTarget === 'furnace') {
+                furnacePassword = newPass;
+                saveData('furnace_password_v1', furnacePassword);
+                showMessage('考勤檔案庫密碼已成功更新！', 'success');
+            }
+            closeChangePasswordModal();
+        };
+
+        // --- Auto Task Functions ---
+        const logTaskExecution = (success, message) => {
+            taskLog.unshift({ timestamp: Date.now(), success, message });
+            if (taskLog.length > 100) taskLog.pop(); // Keep log size manageable
+            saveData('task_log_v1', taskLog);
+            renderTaskLog();
+        };
+        
+        const renderTaskLog = () => {
+            const listEl = allElements.autoTask.logList;
+            listEl.innerHTML = '';
+            if (taskLog.length === 0) {
+                listEl.innerHTML = `<p class="text-center text-gray-500 py-2">尚無任務日誌</p>`;
+                return;
+            }
+            taskLog.forEach(log => {
+                const d = new Date(log.timestamp);
+                const timeStr = d.toLocaleString('zh-TW', { month:'2-digit', day:'2-digit', hour: '2-digit', minute:'2-digit', second: '2-digit', hour12: false });
+                const colorClass = log.success ? 'text-green-600' : 'text-red-600';
+                const icon = log.success ? '✓' : '✗';
+                const itemEl = document.createElement('div');
+                itemEl.className = 'text-gray-700';
+                itemEl.innerHTML = `<span class="font-mono text-xs text-gray-500">${timeStr}</span> <span class="${colorClass}">${icon}</span> ${log.message}`;
+                listEl.appendChild(itemEl);
+            });
+        };
+
+        const renderAutoTasks = () => {
+            const listEl = allElements.autoTask.list;
+            listEl.innerHTML = '';
+            if (autoTasks.length === 0) {
+                listEl.innerHTML = `<p class="text-center text-gray-500 py-4">尚無自動任務</p>`;
+                return;
+            }
+            const dayMap = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+            autoTasks.forEach(task => {
+                const cycleText = task.cycle === 'weekly' ? '每周' : '每月';
+                const dayText = task.cycle === 'weekly' ? dayMap[task.day] : `${task.day}號`;
+                const taskText = task.name === 'export' ? '匯出' : '刪除';
+                let targetText;
+                switch(task.target) {
+                    case 'last_week': targetText = '上週打卡紀錄'; break;
+                    case 'last_month': targetText = '上個月打卡紀錄'; break;
+                    case 'last_week_bell': targetText = '上週響鈴紀錄'; break;
+                    case 'task_log': targetText = '系統任務日誌'; break;
+                    default: targetText = '未知目標';
+                }
+                const itemEl = document.createElement('div');
+                itemEl.className = 'bg-gray-50 p-2 rounded-lg flex items-center justify-between text-sm';
+                itemEl.innerHTML = `
+                    <div>
+                        <p class="font-semibold">${cycleText} ${dayText} ${task.time}</p>
+                        <p class="text-xs text-gray-600">${taskText} ${targetText}</p>
+                    </div>
+                    <button class="delete-auto-task-btn text-red-400 hover:text-red-600 p-1" data-id="${task.id}" title="刪除任務">&times;</button>
+                `;
+                listEl.appendChild(itemEl);
+            });
+        };
+        
+        const handleAddTask = () => {
+            const { cycle, time, dayWeekly, dayMonthly, name, target } = allElements.autoTask;
+            const newTask = {
+                id: `task_${Date.now()}`,
+                cycle: cycle.value,
+                time: time.value,
+                day: cycle.value === 'weekly' ? parseInt(dayWeekly.value) : parseInt(dayMonthly.value),
+                name: name.value,
+                target: target.value,
+                lastRun: null // To prevent running multiple times
+            };
+            autoTasks.push(newTask);
+            saveData('auto_tasks_v1', autoTasks);
+            renderAutoTasks();
+        };
+        
+        const checkAutoTasks = () => {
+            const now = new Date();
+            const oneWeek = 7 * 24 * 60 * 60 * 1000;
+
+            // Reset log every Monday
+            if (now.getDay() === 1 && (!lastLogResetTimestamp || now.getTime() - lastLogResetTimestamp > oneWeek)) {
+                 taskLog = [];
+                 saveData('task_log_v1', taskLog);
+                 lastLogResetTimestamp = now.getTime();
+                 saveData('last_log_reset_v1', lastLogResetTimestamp);
+                 logTaskExecution(true, '系統任務日誌已於週一自動重置。');
+            }
+
+            autoTasks.forEach(task => {
+                const [taskH, taskM] = task.time.split(':').map(Number);
+                let shouldRun = false;
+                
+                if (now.getHours() === taskH && now.getMinutes() === taskM) {
+                    if (task.cycle === 'weekly') {
+                        if (now.getDay() === task.day) {
+                            shouldRun = true;
+                        }
+                    } else if (task.cycle === 'monthly') {
+                        if (now.getDate() === task.day) {
+                            shouldRun = true;
+                        }
+                    }
+                }
+
+                if (shouldRun) {
+                    const todayStr = now.toISOString().split('T')[0];
+                    if (task.lastRun !== todayStr) { // Check if it already ran today
+                        task.lastRun = todayStr;
+                        executeAutoTask(task);
+                        saveData('auto_tasks_v1', autoTasks); // Save lastRun update
+                    }
+                }
+            });
+        };
+
+        const executeAutoTask = (task) => {
+            logTaskExecution(true, `開始執行任務: ${task.name} ${task.target}`);
+            const now = new Date();
+            let startDate, endDate;
+
+            if (task.target === 'last_week' || task.target === 'last_week_bell') {
+                const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                const dayOfWeek = lastWeek.getDay();
+                const diff = lastWeek.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+                startDate = new Date(lastWeek.setDate(diff));
+                startDate.setHours(0,0,0,0);
+                endDate = new Date(startDate);
+                endDate.setDate(startDate.getDate() + 6);
+                endDate.setHours(23,59,59,999);
+            } else if (task.target === 'last_month') {
+                const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                startDate = new Date(lastMonth);
+                startDate.setHours(0,0,0,0);
+                endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+                endDate.setHours(23,59,59,999);
+            }
+
+            if (task.name === 'export' && task.target !== 'last_week_bell' && task.target !== 'task_log') {
+                const recordsToExport = punchRecords.filter(r => {
+                    const d = new Date(r.timestamp);
+                    return d >= startDate && d <= endDate;
+                });
+                const headers = ['工號,姓名,打卡日期,打卡時間,班別(時段),狀態'];
+                const rows = recordsToExport.map(r => {
+                    const d = new Date(r.timestamp); 
+                    const s = {'in': '上班', 'out': '下班', 'duplicate': '重複打卡'}[r.type] || '未知'; 
+                    return [r.employeeId, r.name, d.toLocaleDateString('zh-TW'), d.toLocaleTimeString('zh-TW', {hour12: false}), r.shift, s].map(f => `"${String(f || '').replace(/"/g, '""')}"`).join(',');
+                });
+                const filename = `records_${startDate.toISOString().split('T')[0]}_to_${endDate.toISOString().split('T')[0]}.csv`;
+                exportToCSV(headers.concat(rows), filename);
+                logTaskExecution(true, `任務成功: 匯出了 ${recordsToExport.length} 筆紀錄。`);
+            } else if (task.name === 'delete') {
+                if (task.target === 'last_week' || task.target === 'last_month') {
+                    const originalCount = punchRecords.length;
+                    punchRecords = punchRecords.filter(r => {
+                        const d = new Date(r.timestamp);
+                        return d < startDate || d > endDate;
+                    });
+                    saveData('punch_records_v2', punchRecords);
+                    logTaskExecution(true, `任務成功: 刪除了 ${originalCount - punchRecords.length} 筆打卡紀錄。`);
+                } else if (task.target === 'last_week_bell') {
+                    const originalCount = bell_alarmHistory.length;
+                    bell_alarmHistory = bell_alarmHistory.filter(r => {
+                        const d = new Date(r.timestamp);
+                        return d < startDate || d > endDate;
+                    });
+                    saveData('bell_history_v3', bell_alarmHistory);
+                    logTaskExecution(true, `任務成功: 刪除了 ${originalCount - bell_alarmHistory.length} 筆上週的響鈴紀錄。`);
+                } else if (task.target === 'task_log') {
+                    const originalCount = taskLog.length;
+                    taskLog = [];
+                    saveData('task_log_v1', taskLog);
+                    renderTaskLog();
+                    logTaskExecution(true, `任務成功: 刪除了 ${originalCount} 筆系統任務日誌。`);
+                }
+            }
+        };
+
+
+        const initializeEventListeners = () => {
+            allElements.togglePanelBtn.addEventListener('click', () => {
+                const panel = allElements.managementPanel;
+                if (panel.style.maxHeight && panel.style.maxHeight !== "0px") {
+                    panel.style.maxHeight = null;
+                } else {
+                    openPasswordModal();
+                }
+            });
+            allElements.passwordModal.confirmBtn.addEventListener('click', checkPassword);
+            allElements.passwordModal.cancelBtn.addEventListener('click', closePasswordModal);
+            allElements.passwordModal.input.addEventListener('keydown', (e) => { if (e.key === 'Enter') checkPassword(); });
+            
+            allElements.toggleReportBtn.addEventListener('click', () => {
+                const panel = allElements.reportPanel;
+                if (panel.style.maxHeight) { closeReportPanel(); } 
+                else { allElements.reportAuthModal.overlay.classList.add('show'); allElements.reportAuthModal.input.focus(); allElements.reportAuthModal.error.textContent = ''; }
+            });
+            allElements.reportAuthModal.confirmBtn.addEventListener('click', () => {
+                const authId = allElements.reportAuthModal.input.value.trim();
+                if (!authId) { allElements.reportAuthModal.error.textContent = '密碼不能為空。'; return; }
+                const employee = employees.find(emp => emp.card === authId || emp.password === authId);
+                // Admin can also access reports with their password
+                if (authId === adminPassword || employee) { openReportPanel(authId); } 
+                else { allElements.reportAuthModal.error.textContent = '密碼錯誤或無效。'; }
+            });
+            allElements.reportAuthModal.cancelBtn.addEventListener('click', () => allElements.reportAuthModal.overlay.classList.remove('show'));
+            allElements.reportAuthModal.input.addEventListener('keydown', (e) => { if (e.key === 'Enter') allElements.reportAuthModal.confirmBtn.click(); });
+            allElements.report.generateBtn.addEventListener('click', generateReportData);
+            
+            allElements.toggleFurnaceBtn.addEventListener('click', () => { allElements.furnaceAuthModal.overlay.classList.add('show'); allElements.furnaceAuthModal.input.focus(); allElements.furnaceAuthModal.error.textContent = ''; });
+            allElements.furnaceAuthModal.confirmBtn.addEventListener('click', () => {
+                if (allElements.furnaceAuthModal.input.value === furnacePassword) {
+                    allElements.furnaceAuthModal.overlay.classList.remove('show'); allElements.furnaceAuthModal.input.value = '';
+                    allElements.furnaceModal.overlay.classList.add('show');
+                } else { allElements.furnaceAuthModal.error.textContent = '密碼錯誤。'; }
+            });
+            allElements.furnaceAuthModal.cancelBtn.addEventListener('click', () => allElements.furnaceAuthModal.overlay.classList.remove('show'));
+            allElements.furnaceAuthModal.input.addEventListener('keydown', (e) => { if (e.key === 'Enter') allElements.furnaceAuthModal.confirmBtn.click(); });
+            allElements.furnaceModal.closeBtn.addEventListener('click', () => allElements.furnaceModal.overlay.classList.remove('show'));
+
+            allElements.employeeModal.manageBtn.addEventListener('click', openEmployeeModal);
+            allElements.employeeModal.closeBtn.addEventListener('click', closeEmployeeModal);
+            allElements.employeeModal.exportBtn.addEventListener('click', () => { 
+                if (employees.length === 0) { 
+                    showMessage('人員名冊是空的。', 'info'); 
+                    return; 
+                } 
+                const headers = '工號,姓名,性別,國籍,部門,卡號,打卡密碼'; 
+                const rows = employees.map(e => [e.id, e.name, e.gender, e.nationality, e.department, e.card, e.password].map(f => `"${String(f || '').replace(/"/g, '""')}"`).join(',')); 
+                exportToCSV([headers, ...rows], `employee_registry.csv`); 
+            });
+            allElements.employeeModal.listBody.addEventListener('click', (e) => {
+                const target = e.target.closest('button'); if (!target) return; const id = target.dataset.id;
+                if (target.classList.contains('edit-btn')) {
+                    const empToEdit = employees.find(emp => emp.id === id);
+                    if (empToEdit) { editingEmployeeId = id; allElements.emp.id.value = empToEdit.id; allElements.emp.id.disabled = true; allElements.emp.name.value = empToEdit.name; allElements.emp.gender.value = empToEdit.gender; allElements.emp.nationality.value = empToEdit.nationality; allElements.emp.dept.value = empToEdit.department; allElements.emp.card.value = empToEdit.card; allElements.emp.password.value = empToEdit.password; closeEmployeeModal(); showMessage(`正在編輯 ${empToEdit.name} 的資料。`, 'info'); }
+                } else if (target.classList.contains('delete-btn')) {
+                    const empToDelete = employees.find(emp => emp.id === id);
+                    if(empToDelete) { showGenericConfirm(`確認刪除`, `確定要刪除員工 ${empToDelete.name} (工號: ${id}) 的資料嗎？此操作無法復原。`, () => { employees = employees.filter(emp => emp.id !== id); saveData('employees_v2', employees); renderEmployeeList(); showMessage('員工資料已刪除。', 'info'); }); }
+                }
+            });
+
+            allElements.confirmGenericModal.confirmBtn.addEventListener('click', () => { if (typeof genericConfirmCallback === 'function') { genericConfirmCallback(); } allElements.confirmGenericModal.overlay.classList.remove('show'); genericConfirmCallback = null; });
+            allElements.confirmGenericModal.cancelBtn.addEventListener('click', () => { allElements.confirmGenericModal.overlay.classList.remove('show'); genericConfirmCallback = null; });
+            
+            allElements.clearRecords.clearBtn.addEventListener('click', handleClearRecords);
+            
+            allElements.clearRecords.exportAllBtn.addEventListener('click', () => { if (punchRecords.length === 0) { showMessage('檔案庫是空的。', 'info'); return; } const sortedRecords = [...punchRecords].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)); let csv = ['工號,姓名,打卡日期,打卡時間,班別(時段),狀態']; sortedRecords.forEach(r => { const d = new Date(r.timestamp); const s = {'in': '上班', 'out': '下班', 'duplicate': '重複打卡'}[r.type] || '未知'; csv.push([r.employeeId, r.name, d.toLocaleDateString('zh-TW'), d.toLocaleTimeString('zh-TW', {hour12: false}), r.shift, s].map(f => `"${String(f || '').replace(/"/g, '""')}"`).join(',')); }); exportToCSV(csv, `all_punch_records_archive.csv`); showMessage('所有打卡紀錄的完整檔案已成功匯出！', 'success'); });
+            
+            document.body.addEventListener('click', bell_initAudio, { once: true });
+            
+            allElements.punchInput.addEventListener('input', () => {
+                if (punchInputTimeout) clearTimeout(punchInputTimeout);
+                if (allElements.punchInput.value.trim() !== '') {
+                    punchInputTimeout = setTimeout(() => {
+                        allElements.punchInput.value = '';
+                        allElements.punchStatusSelector.value = 'auto';
+                        showMessage('輸入區已清空。', 'info');
+                    }, 10000);
+                }
+            });
+            allElements.punchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handlePunch(e.target.value); });
+
+            allElements.emp.addBtn.addEventListener('click', handleEmployeeFormSubmit);
+            allElements.emp.importCsv.addEventListener('change', (e) => { const file = e.target.files[0]; if (file) { loadEmployeesFromCSV(file); } });
+            
+            // Manual Punch Auth
+            allElements.manual.punchBtn.addEventListener('click', () => {
+                allElements.manualPunchAuthModal.overlay.classList.add('show');
+                allElements.manualPunchAuthModal.input.focus();
+                allElements.manualPunchAuthModal.error.textContent = '';
+            });
+            allElements.manualPunchAuthModal.confirmBtn.addEventListener('click', () => {
+                if (allElements.manualPunchAuthModal.input.value === MANUAL_PUNCH_PASSWORD) {
+                    allElements.manualPunchAuthModal.overlay.classList.remove('show');
+                    allElements.manualPunchAuthModal.input.value = '';
+                    executeManualPunch();
+                } else {
+                    allElements.manualPunchAuthModal.error.textContent = '驗證密碼錯誤。';
+                }
+            });
+            allElements.manualPunchAuthModal.cancelBtn.addEventListener('click', () => allElements.manualPunchAuthModal.overlay.classList.remove('show'));
+            allElements.manualPunchAuthModal.input.addEventListener('keydown', (e) => { if (e.key === 'Enter') allElements.manualPunchAuthModal.confirmBtn.click(); });
+
+
+            allElements.report.exportBtn.addEventListener('click', () => {
+                const tableBody = allElements.report.tableBody.innerHTML; if (!tableBody || tableBody.includes('沒有任何打卡紀錄')) { showMessage('沒有可匯出的報表資料。', 'info'); return; }
+                const rows = Array.from(allElements.report.tableBody.rows).map(row => Array.from(row.cells).map(cell => `"${cell.innerText.replace(/"/g, '""')}"`).join(','));
+                const headers = Array.from(allElements.report.tableHead.rows[0].cells).map(cell => `"${cell.innerText.replace(/"/g, '""')}"`).join(',');
+                const startDateStr = allElements.report.startDate.value; const endDateStr = allElements.report.endDate.value;
+                exportToCSV([headers, ...rows], `report_${startDateStr}_to_${endDateStr}.csv`);
+            });
+            
+            allElements.bell.historyBtn.addEventListener('click', bell_openHistoryModal);
+            allElements.bell.closeHistoryBtn.addEventListener('click', bell_closeHistoryModal);
+            allElements.bell.clearHistoryBtn.addEventListener('click', () => {
+                if (bell_alarmHistory.length > 0) {
+                    showGenericConfirm('清除歷史紀錄', '確定要清除所有響鈴歷史紀錄嗎？這個操作無法復原喔！', () => {
+                        bell_alarmHistory = [];
+                        saveData('bell_history_v3', bell_alarmHistory);
+                        bell_renderHistory();
+                        showMessage('響鈴歷史已清空。', 'info');
+                    });
+                } else {
+                    showMessage('歷史紀錄本來就是空的喔！', 'info');
+                }
+            });
+            
+            allElements.bell.form.addEventListener('submit', (e) => { 
+                e.preventDefault(); 
+                const id = allElements.bell.scheduleId.value; 
+                const newData = { 
+                    title: allElements.bell.title.value, 
+                    time: allElements.bell.time.value, 
+                    days: Array.from(allElements.bell.daysContainer.querySelectorAll('input:checked')).map(el => Number(el.value)), 
+                    sound: allElements.bell.soundSelect.value, 
+                    duration: Number(allElements.bell.durationInput.value)
+                }; 
+                if (id) { 
+                    const i = bell_schedules.findIndex(s => s.id == id); 
+                    if(i !== -1) { bell_schedules[i] = { ...bell_schedules[i], ...newData, id: Number(id) }; } 
+                } else { 
+                    newData.id = Date.now(); 
+                    bell_schedules.push(newData); 
+                } 
+                saveData('bell_schedules_v4', bell_schedules); 
+                bell_renderSchedules(); 
+                bell_closeModal(); 
+                showMessage('響鈴設定已儲存！', 'success'); 
+            });
+
+            allElements.bell.scheduleList.addEventListener('click', (e) => { const btn = e.target.closest('button'); if (!btn) return; const item = btn.closest('[data-id]'); if (!item) return; const id = Number(item.dataset.id); if (btn.classList.contains('bell-edit-btn')) { const s = bell_schedules.find(s => s.id === id); if (s) bell_openModal(s); } else if (btn.classList.contains('bell-delete-btn')) { bell_schedules = bell_schedules.filter(s => s.id !== id); saveData('bell_schedules_v4', bell_schedules); bell_renderSchedules(); showMessage('一個響鈴場景被移除了。', 'info'); } });
+            allElements.bell.addBtn.addEventListener('click', () => bell_openModal());
+            allElements.bell.cancelBtn.addEventListener('click', bell_closeModal);
+            
+            // Sound Manager Listeners
+            allElements.soundManager.manageBtn.addEventListener('click', openSoundManager);
+            allElements.soundManager.closeBtn.addEventListener('click', closeSoundManager);
+            allElements.soundManager.uploadInput.addEventListener('change', handleSoundUpload);
+            allElements.soundManager.list.addEventListener('click', (e) => {
+                const deleteBtn = e.target.closest('.sound-delete-btn');
+                if (deleteBtn) {
+                    handleDeleteSound(deleteBtn.dataset.id);
+                }
+            });
+            
+            // Password Change Listeners
+            allElements.passwordModal.changeBtn.addEventListener('click', () => openChangePasswordModal('admin'));
+            allElements.furnaceAuthModal.changeBtn.addEventListener('click', () => openChangePasswordModal('furnace'));
+            allElements.changePasswordModal.confirmBtn.addEventListener('click', handleChangePassword);
+            allElements.changePasswordModal.cancelBtn.addEventListener('click', closeChangePasswordModal);
+
+            // Auto Task Listeners
+            allElements.autoTask.cycle.addEventListener('change', (e) => {
+                const isWeekly = e.target.value === 'weekly';
+                allElements.autoTask.dayWeeklyContainer.classList.toggle('hidden', !isWeekly);
+                allElements.autoTask.dayMonthlyContainer.classList.toggle('hidden', isWeekly);
+            });
+            allElements.autoTask.name.addEventListener('change', (e) => {
+                allElements.autoTask.deleteWarning.classList.toggle('hidden', e.target.value !== 'delete');
+            });
+            allElements.autoTask.addBtn.addEventListener('click', handleAddTask);
+            allElements.autoTask.list.addEventListener('click', (e) => {
+                const deleteBtn = e.target.closest('.delete-auto-task-btn');
+                if (deleteBtn) {
+                    const taskId = deleteBtn.dataset.id;
+                    autoTasks = autoTasks.filter(t => t.id !== taskId);
+                    saveData('auto_tasks_v1', autoTasks);
+                    renderAutoTasks();
+                    showMessage('自動任務已刪除。', 'info');
+                }
+            });
+
+
+            document.body.addEventListener('keydown', handleGlobalKeyPress);
+        };
+
+        const initializeSystem = () => {
+            employees = loadData('employees_v2', []);
+            punchRecords = loadData('punch_records_v2', []);
+            const defaultShifts = Array(6).fill().map((_, i) => ({ name: ``, start: '', end: '' }));
+            defaultShifts[0] = { name: '早班', start: '09:00', end: '18:00' };
+            shifts = loadData('shifts_v2', defaultShifts);
+            bell_schedules = loadData('bell_schedules_v4', []);
+            bell_alarmHistory = loadData('bell_history_v3', []);
+            customSounds = loadData('custom_sounds_v2', []);
+            adminPassword = loadData('admin_password_v1', 'TC5128');
+            furnacePassword = loadData('furnace_password_v1', 'TC5128');
+            autoTasks = loadData('auto_tasks_v1', []);
+            taskLog = loadData('task_log_v1', []);
+            lastLogResetTimestamp = loadData('last_log_reset_v1', Date.now());
+
+            updateClock(); setInterval(updateClock, 1000);
+            renderShiftSettings(); populateShiftSelector(); bell_renderSchedules(); initializeEventListeners();
+            renderAutoTasks();
+            renderTaskLog();
+            
+            const today = new Date(); const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            allElements.report.startDate.value = firstDayOfMonth.toISOString().split('T')[0];
+            allElements.report.endDate.value = today.toISOString().split('T')[0];
+            allElements.punchInput.focus(); showMessage('震欣AI作息系統已準備就緒。', 'info');
+        };
+        initializeSystem();
+    });
+    </script>
+</body>
+</html>
