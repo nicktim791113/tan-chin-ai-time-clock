@@ -1,6 +1,6 @@
 {
   "name": "tan-chin-ai-time-clock",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "震欣AI作息系統桌面版",
   "main": "main.js",
   "scripts": {
