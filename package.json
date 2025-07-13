@@ -1,44 +1,70 @@
 {
-  "name": "tan-chin-ai-time-clock",
-  "version": "1.0.3",
-  "description": "震欣AI作息系統桌面版",
+  // --- 船舶基本資料 ---
+  // "name": 這是我們船在所有npm海洋中的唯一識別碼，依照規定，它必須是小寫且不能有空格，就像船底的神秘符文。
+  "name": "tanchin-time-clock",
+  // "version": 船的版本號。每次我們升級船隻，都可以增加這個數字，例如 "1.0.1"。
+  "version": "1.0.0",
+  // "description": 一段簡短的描述，告訴別人這艘船的用途是什麼。
+  "description": "一個神奇的AI作息與打卡系統",
+  // "main": 指定我們船上的船長室在哪裡。Electron會先來這裡找船長(main.js)下達指令。
   "main": "main.js",
+  // "author": 寫下偉大造船師傅的名字！也就是你！
+  "author": "HUANG-CHI-WEI",
+  // "productName": 這將是我們船隻正式下水後，在人們桌面上顯示的美麗名字。
+  "productName": "震欣AI作息系統",
+
+  // --- 啟航的魔法口令 (Scripts) ---
   "scripts": {
+    // "start": 一個簡單的口令，喊出 `npm start` 就能讓船在我們的海灣裡試航，看看功能是否正常。
     "start": "electron .",
-    "build": "electron-builder"
+    // "pack": 你最想要的「快速測試」口令！喊出 `npm run pack`，會快速打包成一個綠色免安裝版，但不製作安裝檔。就像變出一艘可以立刻下水的小模型船來測試。
+    "pack": "electron-builder --dir",
+    // "make": 最終的「盛大啟航」口令！喊出 `npm run make`，我們的魔法造船師(electron-builder)就會打造出那艘最華麗的瓶中船(.exe安裝檔)。
+    "make": "electron-builder"
   },
-  "dependencies": {
-    "electron-updater": "^6.1.8"
-  },
-  "devDependencies": {
-    "electron": "^28.3.3",
-    "electron-builder": "^24.13.3"
-  },
+
+  // --- 船隻建造與發佈設定 (Build Configuration) ---
   "build": {
-    "productName": "TanChin AI Time Clock",
-    "appId": "com.yourcompany.tanchin.timeclock",
-    "copyright": "Copyright © 2025 黃啓惟",
-    "directories": {
-      "output": "dist"
+    // "appId": 應用程式的全球唯一ID，通常是反向域名格式，確保我們的船在廣大海洋中不會跟別人撞名。
+    "appId": "com.huangchiwei.tanchintimeclock",
+    // "win": 專門針對Windows王國的造船設定。
+    "win": {
+      // "target": "nsis" 是一種流行的安裝檔製作精靈，它能打造出有安裝步驟、漂亮的安裝介面。
+      "target": "nsis",
+      // "icon": 船首像！指定一個 .ico 檔案作為應用程式的圖示。你需要自己準備一個圖示檔，例如 icon.ico，並放在專案資料夾中。如果沒有指定，就會用預設的圖示。
+      "icon": "icon.ico" // 記得要自己準備一個 icon.ico 檔案喔！
     },
+    // "nsis": 針對 "nsis" 安裝精靈的客製化設定。
+    "nsis": {
+      // "oneClick": 是否要一鍵安裝？設定為 false，使用者就能選擇安裝路徑等選項。
+      "oneClick": false,
+      // "allowToChangeInstallationDirectory": 允許使用者自己選擇要把船停靠在哪個港口（安裝路徑）。
+      "allowToChangeInstallationDirectory": true
+    },
+    // --- 自動更新的魔法羅盤設定 ---
     "publish": [
       {
+        // "provider": "github" 告訴魔法羅盤，要去一個叫做 "GitHub" 的遠方神秘島嶼尋找新版本的寶藏。
         "provider": "github",
-        "owner": "nicktim791113",
-        "repo": "tan-chin-ai-time-clock"
+        // "owner": 島嶼主人的名字。
+        "owner": "YOUR_GITHUB_USERNAME", // <--- ⚠️ 請換成你的 GitHub 使用者名稱
+        // "repo": 島嶼上寶藏庫的名字。
+        "repo": "TanChin-Time-Clock-Repo" // <--- ⚠️ 請換成你的 GitHub 儲存庫名稱
       }
-    ],
-    "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": true,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
-      "installerHeaderIcon": "assets/icon.ico"
-    }
+    ]
+  },
+
+  // --- 必要的魔法零件 (Dependencies & DevDependencies) ---
+  // "devDependencies": 這些零件只在我們「造船時」需要，船造好後就不會跟著出航了。
+  "devDependencies": {
+    // "electron": 核心的魔法引擎！它讓我們的HTML寶藏圖能變成一艘真正的船(應用程式)。
+    "electron": "^28.0.0", // 版本號前的 ^ 表示我們會使用這個主版本中最新的版本
+    // "electron-builder": 最厲害的魔法造船師！它能幫我們把船打包、製作成安裝檔。
+    "electron-builder": "^24.9.1"
+  },
+  // "dependencies": 這些是跟著船一起出航的重要零件，確保船在海上能正常運作。
+  "dependencies": {
+    // "electron-updater": 自動更新的魔法羅盤！它會自動幫我們檢查有沒有新版本的船可以更換。
+    "electron-updater": "^6.1.7"
   }
 }

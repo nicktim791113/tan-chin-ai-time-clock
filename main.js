@@ -1,112 +1,96 @@
-// 在卷軸的開頭，我們從魔法書架上拿出所有需要的魔法元素
-const { app, BrowserWindow, dialog } = require('electron');
+// --- 引入必要的魔法模組 ---
+// `app` 模組：控制我們應用程式生命週期的魔法師，像是船的啟動與熄火。
+// `BrowserWindow` 模組：用來創造應用程式視窗的魔法師，就像是船上的窗戶。
+// `autoUpdater` 模組：從 `electron-updater` 來的魔法羅盤，負責自動更新。
+const { app, BrowserWindow } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const path = require('path');
+const path = require('path'); // `path` 是 Node.js 內建的工具，幫助我們處理檔案路徑，確保在不同電腦上都能找到對的路。
 
-// 我們需要一個全域變數來存放我們的主要宮殿(視窗)，
-// 這樣它才不會因為魔法世界的規則而被意外清除
-let mainWindow;
+// --- 船長的主要指令 ---
 
-/**
- * 咒語一：建造水晶宮殿 (創建瀏覽器視窗)
- */
+// createWindow 函數：這是我們最重要的指令，用來「建造並打開船艙的主視窗」。
 function createWindow() {
-  // 實例化一個新的 BrowserWindow，設定它的外觀與大小
-  mainWindow = new BrowserWindow({
-    width: 1200,    // 宮殿的寬度
-    height: 900,    // 宮殿的高度
+  // 創造一個新的瀏覽器視窗 (我們的船艙主視窗)。
+  const mainWindow = new BrowserWindow({
+    // 設定視窗的初始寬度。
+    width: 1200,
+    // 設定視窗的初始高度。
+    height: 900,
+    // `webPreferences` 是一些與網頁內容相關的進階設定。
     webPreferences: {
-      // 這是關鍵的咒語，允許視窗內的魔法卷軸（前端頁面）
-      // 使用 Node.js 的力量，就像讓卷軸也能使用書房裡的工具
+      // `nodeIntegration: true` 是一個強大的魔法，它允許我們在網頁(index.html)中，直接使用 Node.js 的能力，比如讀寫檔案。
+      // 對於一個完全本地端的應用程式，這是最簡單的入門方式。
       nodeIntegration: true,
-      contextIsolation: false,
-    },
-    icon: path.join(__dirname, 'assets/icon.png') // 視窗左上角的圖示
+      // `contextIsolation: false` 關閉了上下文隔離。與上面一樣，這是為了簡化開發，讓網頁與Electron主程式能更輕易地溝通。
+      // 注意：如果要載入外部網站，基於安全考量，建議將這兩項設為預設值(false 和 true)，並使用 preload.js 腳本。但對於我們自己的本地檔案，這樣設定很方便。
+      contextIsolation: false
+    }
   });
 
-  // 讓宮殿載入你的主要魔法卷軸 (index.html)
+  // 讓主視窗載入我們的寶藏圖 `index.html`。
+  // `path.join(__dirname, 'index.html')` 會產生一個絕對路徑，確保萬無一失。
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
-  // 當宮殿被關閉時，我們需要確保它的參考也被清除
-  mainWindow.on('closed', function () {
-    mainWindow = null;
+  // 這行是給喜歡探險的你，可以在測試時打開開發者工具，就像得到一個能看透船隻內部結構的魔法鏡。
+  // mainWindow.webContents.openDevTools();
+
+  // 當視窗準備好後，就命令魔法羅盤開始檢查更新。
+  mainWindow.once('ready-to-show', () => {
+    autoUpdater.checkForUpdatesAndNotify();
   });
 }
 
-/**
- * 咒語二：訓練並喚醒魔法信鴿 (設定自動更新)
- */
-function setupAutoUpdater() {
-  // 讓信鴿立刻去遠方的皇家發布台(GitHub Releases)檢查一次有沒有新消息
-  autoUpdater.checkForUpdatesAndNotify();
+// --- 監聽船隻的各種狀態 ---
 
-  // 設定信鴿的行為模式...
-
-  // 當信鴿回報「有新版本喔！」的時候，我們在背景默默做事
-  autoUpdater.on('update-available', (info) => {
-    console.log('發現新版本，版本號:', info.version);
-    // 在這裡你也可以彈出一個提示，告訴使用者「正在為您下載新版本...」
-  });
-
-  // 當信鴿沒有發現任何新版本時
-  autoUpdater.on('update-not-available', (info) => {
-    console.log('目前已是最新版本，版本號:', info.version);
-  });
-
-  // 當更新過程中發生錯誤時
-  autoUpdater.on('error', (err) => {
-    console.error('自動更新出錯:', err.message);
-    // dialog.showErrorBox('更新失敗', `更新過程中發生錯誤，請稍後再試。\n\n錯誤訊息: ${err.message}`);
-  });
-
-  // 當信鴿成功將新的建築藍圖(更新檔)下載回來時
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('新版本下載完成，版本號:', info.version);
-    
-    // 跳出一個對話框，詢問使用者是否要立即進行宮殿的翻修(安裝更新)
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: '發現新版本',
-      message: `發現了新的版本 (${info.version})，是否要立即重新啟動應用程式以進行更新？`,
-      buttons: ['馬上更新', '稍後再說'],
-      defaultId: 0, // 預設按鈕是 "馬上更新"
-      cancelId: 1   // 點擊 "稍後再說" 或關閉視窗時的行為
-    }).then(result => {
-      if (result.response === 0) {
-        // 如果使用者選擇 "馬上更新"，則執行這個強大的咒語
-        autoUpdater.quitAndInstall();
-      }
-    });
-  });
-}
-
-
-// =======================================================================
-//                           魔法儀式的正式開始
-// =======================================================================
-
-// 當整個魔法世界(Electron)準備就緒時，我們舉行盛大的開幕儀式
-app.on('ready', () => {
-  // 儀式第一步：建造我們的水晶宮殿
+// `app.whenReady()`: 這是一個承諾。當 Electron 完成所有初始化，我們的船已經準備好啟航時，就執行 `.then()` 裡面的指令。
+app.whenReady().then(() => {
+  // 啟航！呼叫 createWindow 指令來打開主視窗。
   createWindow();
 
-  // 儀式第二步：立刻派出魔法信鴿，檢查是否有新的皇家公告
-  setupAutoUpdater();
+  // 這是針對 macOS 的特別指令。在 macOS 上，即使所有視窗都關閉了，應用程式通常還會留在 Dock 上。
+  // 當使用者點擊 Dock 圖示時，如果沒有開啟的視窗，就再重新打開一個。
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
 });
 
-
-// 當所有宮殿的窗戶都關閉時，就正式結束程式
-// (在 macOS 上，除非使用者明確退出，否則應用程式會留在 Dock 中)
+// `app.on('window-all-closed', ...)`: 當所有的船窗都關閉時觸發。
 app.on('window-all-closed', () => {
+  // 在 Windows 和 Linux 上，關閉所有視窗通常意味著要完全退出應用程式。
+  // `process.platform` 可以判斷當前的作業系統。'darwin' 就是 macOS。
+  // 所以，如果不是在 macOS 上，我們就呼叫 `app.quit()` 讓船隻完全熄火。
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// 當使用者點擊 Dock 圖示，但沒有任何宮殿視窗是開啟時
-// (macOS 專用)，就重新建造一座新的宮殿
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+// --- 自動更新魔法羅盤的細節設定 ---
+// 這裡我們監聽魔法羅盤回報的各種訊息，你可以客製化提示給使用者。
+
+// 當開始檢查更新時...
+autoUpdater.on('checking-for-update', () => {
+  console.log('正在尋找新版本的寶藏圖...');
+});
+
+// 當找到新版本時...
+autoUpdater.on('update-available', (info) => {
+  console.log('找到了！新版本的寶藏圖！', info);
+});
+
+// 當沒有新版本時...
+autoUpdater.on('update-not-available', (info) => {
+  console.log('目前的寶藏圖已經是最新版了。', info);
+});
+
+// 當更新出錯時...
+autoUpdater.on('error', (err) => {
+  console.log('糟糕！魔法羅盤在尋寶途中迷路了：', err);
+});
+
+// 當新版本下載完成時...
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('新寶藏圖已經下載完畢！將在關閉程式後自動更換。');
+  // 你可以在這裡跳出一個提示，詢問使用者是否要立刻重新啟動來安裝更新。
 });
