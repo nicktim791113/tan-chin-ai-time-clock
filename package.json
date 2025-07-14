@@ -1,6 +1,6 @@
 {
   "name": "tanchin-time-clock",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "一個神奇的AI作息與打卡系統",
   "main": "main.js",
   "author": "HUANG-CHI-WEI",
